@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/save-to-db",
+      "schedule": "0 14 * * *"
+    }
+  ]
+}
