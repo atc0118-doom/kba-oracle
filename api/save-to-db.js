@@ -1,16 +1,22 @@
 /**
  * 取得したデータをNeon(Postgres)に保存するエンドポイント。
  *
- * 注意点:
+ * セキュリティ:
+ * - このエンドポイントは誰でもURLを知っていれば叩けてしまうため、
+ *   Vercelの環境変数 CRON_SECRET を設定すると、Vercel Cronからの
+ *   呼び出し以外は拒否するようになる(Authorizationヘッダーを検証)。
+ *   CRON_SECRETが未設定の場合はチェックをスキップする(動作確認用)。
+ *
+ * 重複防止:
+ * - races は (source, course, race_date, race_no) の一意制約でUPSERT。
+ * - entries は (race_id, horse_no) の一意制約でUPSERT。
+ * - odds / payouts には一意制約が付けにくいため、対象レースの
+ *   既存レコードを一旦DELETEしてから入れ直す方式で、同じ日に
+ *   何度実行しても重複しないようにしている。
+ *
+ * パフォーマンス:
  * - オッズは1日で数万件になるため、1件ずつINSERTすると遅すぎる。
  *   まとめて書き込む(バルクインサート)方式にしている。
- * - races は (source, course, race_date, race_no) の一意制約で
- *   UPSERT(既にあれば更新、無ければ追加)している。
- * - entries は (race_id, horse_no) の一意制約でUPSERTしている。
- * - odds / payouts には一意制約を付けていないため、同じ日に何度も
- *   このエンドポイントを叩くと重複が増える。再実行する場合は
- *   事前にその日のoddsレコードを消してから叩くなどの運用が必要
- *   (プロトタイプ段階のため、重複防止は今後の課題としている)。
  *
  * 環境変数: Neon Integrationで自動追加された接続文字列を使う。
  * 変数名はプレフィックス設定により変わるため、複数の候補名を試す。
@@ -18,6 +24,13 @@
 
 const { Pool } = require("@neondatabase/serverless");
 const { fetchTodayData } = require("../lib/nar-data.js");
+
+function isAuthorized(req) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return true; // 未設定なら動作確認用にチェックをスキップ
+  const auth = req.headers.authorization || "";
+  return auth === `Bearer ${secret}`;
+}
 
 function getConnectionString() {
   const candidates = [
@@ -53,6 +66,11 @@ async function bulkInsert(client, table, columns, rows, chunkSize, conflictClaus
 }
 
 module.exports = async function handler(req, res) {
+  if (!isAuthorized(req)) {
+    res.status(401).json({ error: "認証エラー: このエンドポイントはCron専用です" });
+    return;
+  }
+
   const connectionString = getConnectionString();
   if (!connectionString) {
     res.status(500).json({
@@ -115,6 +133,13 @@ module.exports = async function handler(req, res) {
       const payoutsWithId = data.payouts
         .map((p) => ({ ...p, race_id: raceIdMap.get(`${p.course}|${p.raceDate}|${p.raceNo}`) }))
         .filter((p) => p.race_id);
+
+      // 重複防止: 今回対象になったレースの既存odds/payoutsを一旦削除してから入れ直す
+      const targetRaceIds = [...raceIdMap.values()];
+      if (targetRaceIds.length > 0) {
+        await client.query(`DELETE FROM odds WHERE race_id = ANY($1::int[])`, [targetRaceIds]);
+        await client.query(`DELETE FROM payouts WHERE race_id = ANY($1::int[])`, [targetRaceIds]);
+      }
 
       // 3. entries をバルクUPSERT
       const entriesInserted = await bulkInsert(
