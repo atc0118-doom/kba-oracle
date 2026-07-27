@@ -1,0 +1,13 @@
+{
+  "name": "nar-oracle",
+  "version": "1.0.0",
+  "description": "地方競馬(NAR) データ取得・予測・答え合わせダッシュボード",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.10",
+    "papaparse": "^5.4.1"
+  }
+}
