@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/predict",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/save-to-db",
       "schedule": "0 14 * * *"
     }
