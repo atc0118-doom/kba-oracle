@@ -1,32 +1,145 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>NAR ORACLE - 準備中</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      background: #111;
-      color: #eee;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-    }
-    .box {
-      text-align: center;
-    }
-    a {
-      color: #6cf;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NAR ORACLE</title>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #14171c;
+    --border: #23272e;
+    --text: #e8e6e1;
+    --muted: #8b9099;
+    --accent: #4fc3a1;
+    --accent-dim: #2d6b58;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', ui-monospace, monospace;
+    margin: 0;
+    padding: 24px 16px 60px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 {
+    font-size: 1.4rem;
+    letter-spacing: 0.08em;
+    margin: 0 0 4px;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-bottom: 28px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+  }
+  .card h2 {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  .big {
+    font-size: 2.2rem;
+    color: var(--accent);
+    font-weight: bold;
+  }
+  .meta { color: var(--muted); font-size: 0.8rem; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td {
+    text-align: left;
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  th { color: var(--muted); font-weight: normal; font-size: 0.75rem; }
+  .rate-bar {
+    display: inline-block;
+    height: 6px;
+    background: var(--accent-dim);
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  .rate-fill { height: 100%; background: var(--accent); border-radius: 3px; }
+  .loading, .error { color: var(--muted); padding: 20px 0; }
+  .error { color: #d97757; }
+  a { color: var(--accent); }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.75rem;
+    margin-top: 30px;
+  }
+</style>
 </head>
 <body>
-  <div class="box">
-    <h1>NAR ORACLE</h1>
-    <p>地方競馬データ収集システム - 構築中</p>
-    <p><a href="/api/fetch-and-parse">/api/fetch-and-parse を試す</a></p>
-  </div>
+<div class="wrap">
+  <h1>NAR ORACLE</h1>
+  <div class="sub">地方競馬 予測精度トラッカー &mdash; model: v1-heuristic</div>
+
+  <div id="content" class="loading">読み込み中...</div>
+
+  <footer>
+    <a href="/api/stats">/api/stats (raw JSON)</a>
+  </footer>
+</div>
+
+<script>
+async function load() {
+  const el = document.getElementById('content');
+  try {
+    const res = await fetch('/api/stats');
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const total = data.total || {};
+    const daily = data.daily || [];
+
+    let html = '';
+
+    html += '<div class="card">';
+    html += '<h2>通算成績</h2>';
+    html += '<div class="big">' + (total.hit_rate_pct ?? '--') + '%</div>';
+    html += '<div class="meta">' + (total.hits ?? 0) + ' / ' + (total.total_races ?? 0) + ' レース的中(単勝1着予測)</div>';
+    html += '</div>';
+
+    html += '<div class="card">';
+    html += '<h2>日別成績</h2>';
+    if (daily.length === 0) {
+      html += '<div class="meta">まだ確定した結果がありません。</div>';
+    } else {
+      html += '<table><thead><tr><th>日付</th><th>結果</th><th>的中率</th></tr></thead><tbody>';
+      for (const d of daily) {
+        const rate = parseFloat(d.hit_rate_pct) || 0;
+        html += '<tr>';
+        html += '<td>' + d.race_date.slice(0, 10) + '</td>';
+        html += '<td>' + d.hits + ' / ' + d.total_races + '</td>';
+        html += '<td><span class="rate-bar" style="width:60px"><span class="rate-fill" style="width:' + Math.min(rate, 100) + '%"></span></span>' + rate + '%</td>';
+        html += '</tr>';
+      }
+      html += '</tbody></table>';
+    }
+    html += '</div>';
+
+    html += '<div class="meta" style="text-align:right">最終更新: ' + new Date(data.generatedAt).toLocaleString('ja-JP') + '</div>';
+
+    el.className = '';
+    el.innerHTML = html;
+  } catch (err) {
+    el.className = 'error';
+    el.textContent = 'エラー: ' + err.message;
+  }
+}
+load();
+</script>
 </body>
 </html>
