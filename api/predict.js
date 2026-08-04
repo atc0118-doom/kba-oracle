@@ -67,8 +67,15 @@ module.exports = async function handler(req, res) {
       }
 
       // race_idごとにグループ化して予測スコアを計算
+      // 帯広ば(ばんえい競走)は通常競馬と全く異なる競技(そり牽引の力比べ)のため、
+      // 現行の予測ロジック(全成績・当競馬場実績・騎手成績ベース)は前提が合わない。
+      // 実際に的中率が他場の1/3程度と大きく劣っていたため、予測対象から除外する。
+      // (races/entriesの記録自体は upsertRacesAndEntries で通常通り保存される)
+      const EXCLUDED_COURSES = ["帯広ば"];
+
       const byRaceId = new Map();
       for (const e of data.entries) {
+        if (EXCLUDED_COURSES.includes(e.course)) continue;
         const raceId = raceIdMap.get(`${e.course}|${e.raceDate}|${e.raceNo}`);
         if (!raceId) continue;
         if (!byRaceId.has(raceId)) byRaceId.set(raceId, []);
@@ -111,7 +118,11 @@ module.exports = async function handler(req, res) {
         );
       }
 
-      res.status(200).json({ races: byRaceId.size, predictions: predictionRows.length });
+      res.status(200).json({
+        races: byRaceId.size,
+        predictions: predictionRows.length,
+        excludedCourses: EXCLUDED_COURSES,
+      });
     } finally {
       client.release();
     }
