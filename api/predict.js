@@ -86,12 +86,25 @@ module.exports = async function handler(req, res) {
           distanceRecord: e.distanceRecord,
           jockeyRecord: e.jockeyRecord,
           weightDiff: e.weightDiff,
+          popularity: e.popularity,
         });
       }
 
+      // 市場(オッズ)の人気1〜4位の中からのみ予測1位を選ぶ絞り込み方式。
+      // 過去データの検証で、人気5位以下を独自に「穴馬」として推す判断は
+      // ほぼ機能していなかった(勝率1.6%)ため、この段階では採用しない。
+      // 人気データが無い場合(オッズ未確定など)は全馬を対象にフォールバックする。
+      const POPULARITY_CUTOFF = 4;
+
       const predictionRows = [];
       for (const [raceId, horses] of byRaceId.entries()) {
-        const ranked = rankHorses(horses);
+        let candidates = horses.filter(
+          (h) => h.popularity !== null && h.popularity !== undefined && h.popularity <= POPULARITY_CUTOFF
+        );
+        if (candidates.length === 0) {
+          candidates = horses; // 人気データが無い場合は全馬を対象にする
+        }
+        const ranked = rankHorses(candidates);
         for (const h of ranked) {
           predictionRows.push({
             race_id: raceId,
